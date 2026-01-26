@@ -80,12 +80,16 @@ class IADelibConnector(BaseResource):
         perm="can_access",
         display_category="Récupération de point",
     )
-    def read_item(self, request, uid, config_id):
+    def read_item(self, request, uid, config_id, **kwargs):
         url = f"{self.url}@item"  # Url et endpoint à contacter
         params = {
             "UID": uid,
             "config_id": config_id,
         }  # UID de mon point à récupérer et configuration de l'instance iA.Delib.
+
+        # Optionnal parameters
+        if kwargs:
+            params.update(kwargs)
         try:
             response = self.session.get(url, params=params)
         except RequestException as e:
@@ -105,6 +109,39 @@ class IADelibConnector(BaseResource):
             self.logger.warning(f"iA.Delib Connector Error: {e} {json_response}")
             raise APIError(f"iA.Delib Connector Error: {e} {json_response}")
         return json_response
+
+    @endpoint(
+        methods=["get"],
+        name="check-status-items",
+        description="Vérification qu'un point et ses liaisons sont en statut final",
+        long_description="Renvoie True si un point et ses statuts liés sont dans un statut final",
+        parameters={
+            "uid": {
+                "description": "Identifiant d'un Point",
+                "example_value": "bce166cfb27946b58aff9ecfa27367fc",
+            },
+            "config_id": {
+                "description": "Identifiant de la config de l'instance iA.Delib",
+                "example_value": "meeting-config-college",
+            },
+            "linked_mode": {
+                "description": "mode de liaison utilisée entre les points",
+                "example_value": "auto",
+            }
+        },
+        perm="can_access",
+        display_category="Récupération de point",
+    )
+    def check_status_items(self, request, uid, config_id, linked_mode="auto"):
+        FINAL_STATUS = ["accepted", "accepted_with_modification", "refused"]
+        result = self.read_item(request, uid, config_id, extra_include="linked_items", extra_include_linked_items_mode=linked_mode)
+        if result.get("review_state") not in FINAL_STATUS:
+            return False
+        elif result.get("extra_include_linked_items"):
+            for extra_include_linked_item in result.get("extra_include_linked_items"):
+                if extra_include_linked_item.get("review_state") not in FINAL_STATUS:
+                    return False
+        return True
 
     @endpoint(
         methods=["get"],
